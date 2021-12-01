@@ -1,0 +1,59 @@
+---
+title: "800K Pre and Post Diabetes"
+author: "Josephine Choi"
+date: "13/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+options(scipen = 999) 
+path<-file.choose()
+diabetes<-read.csv(path,dec=",",strip.white = TRUE)
+
+summary(diabetes)
+names(diabetes)
+head(diabetes)
+
+
+#This part tries to retrieve the panel data Mandevi wants 
+
+
+diabetes$FBS_Date<-as.Date(diabetes$FBS_Date,format='%m/%d/%Y')
+diabetes$DM_OnsetDate<-as.Date(diabetes$DM_OnsetDate,format='%m/%d/%Y')
+diabetes$sBP<-as.numeric(diabetes$sBP)
+
+library(dplyr)
+
+
+dataset1<-subset(diabetes,Diabetes==1& FBS_Date>DM_OnsetDate)
+after<-do.call(rbind, unname(by(dataset1, dataset1$Patient_ID, function(x) x[x$FBS_Date == min(x$FBS_Date),])))
+after_distinct<-after%>%distinct(Patient_ID,.keep_all=TRUE)
+after_distinct<-after_distinct%>%select(Patient_ID,Age_at_Exam,Sex,sBP,BMI,LDL,HDL,A1c,TG,FBS,FBS_Date,Total_Cholesterol,Diabetes,DM_OnsetDate)
+
+
+dataset2<-subset(diabetes,Diabetes==1& FBS_Date<DM_OnsetDate)
+before<-do.call(rbind, unname(by(dataset2, dataset2$Patient_ID, function(x) x[x$FBS_Date == max(x$FBS_Date),])))
+before_distinct<-before%>%distinct(Patient_ID,.keep_all=TRUE)
+before_distinct<-before_distinct%>%select(Patient_ID,Age_at_Exam,Sex,sBP,BMI,LDL,HDL,A1c,TG,FBS,FBS_Date,Total_Cholesterol,Diabetes,DM_OnsetDate)
+#colnames(before_distinct) <-paste("bef",colnames(before_distinct),sep="_")
+
+
+#after<-do.call(rbind, unname(by(dataset1, dataset1$Patient_ID, function(x) x[x$FBS_Date == min(x$FBS_Date),])))
+#after_distinct<-after%>%distinct(Patient_ID,.keep_all=TRUE)
+#after_distinct<-after_distinct%>%select(Patient_ID,Age_at_Exam,Sex,sBP,BMI,LDL,HDL,A1c,TG,FBS,FBS_Date,Total_Cholesterol,Diabetes,DM_OnsetDate)
+#colnames(after_distinct) <-paste("aft",colnames(after_distinct),sep="_")
+head(before_distinct)
+
+combined<-merge(before_distinct,after_distinct,by="Patient_ID",suffixes = c(".bef",".aft"))
+head(combined)
+
+```
+
+
+
+```{r}
+write.csv(combined,"bef_after_800K_diabetes.csv")
+```
+
+

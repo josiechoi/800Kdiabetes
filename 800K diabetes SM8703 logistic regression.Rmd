@@ -1,0 +1,194 @@
+---
+title: "800K Diabetes SM8103"
+author: "Josephine Choi"
+date: "13/11/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+#knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+
+```{r Clean Data}
+#turn off scientific notation 
+options(scipen = 999) 
+
+
+library(dplyr)
+#select files, fix the decimal
+path<-file.choose()
+#path<-"C:\Users\josep\Downloads\SM8103 Assignment 3 Quantiative Study\800Kdiabetes.csv"
+diabetes<-read.csv(path,dec=",",strip.white = TRUE)
+
+summary(diabetes)
+names(diabetes)
+
+
+
+diabetes$FBS_Date<-as.Date(diabetes$FBS_Date,format='%m/%d/%Y')
+diabetes$DM_OnsetDate<-as.Date(diabetes$DM_OnsetDate,format='%m/%d/%Y')
+diabetes$OA_OnsetDate<-as.Date(diabetes$OA_OnsetDate,format='%m/%d/%Y')
+diabetes$FBS_Date<-as.Date(diabetes$FBS_Date,format='%m/%d/%Y')
+
+diabetes$sBP<-as.numeric(diabetes$sBP)
+
+#Patient without diabetes
+dataset1<-subset(diabetes,Diabetes==0)
+withoutDM<-dataset1%>%distinct(Patient_ID,.keep_all=TRUE)
+
+withoutDM$comorbidities<-withoutDM$HTN+withoutDM$OA+withoutDM$COPD+withoutDM$Depression
+withoutDM_distinct<-withoutDM%>%select(Patient_ID,Age_at_Exam,Sex,sBP,BMI,LDL,HDL,A1c,TG,FBS,FBS_Date,Total_Cholesterol,Diabetes,DM_OnsetDate,comorbidities,OA)
+
+
+#Patient with diabetes - only select the biomarkers after being diagnosed with diabetes
+
+dataset2<-subset(diabetes,Diabetes==1&FBS_Date>DM_OnsetDate)
+withDM<-dataset2%>%distinct(Patient_ID,.keep_all=TRUE)
+
+
+withDM$comorbidities<-withDM$HTN+withDM$OA+withDM$COPD+withDM$Depression
+withDM_distinct<-withDM%>%select(Patient_ID,Age_at_Exam,Sex,sBP,BMI,LDL,HDL,A1c,TG,FBS,FBS_Date,Total_Cholesterol,Diabetes,DM_OnsetDate,comorbidities,OA)
+
+data<-rbind(withoutDM,withDM)
+
+```
+```{r}
+#head(withDM)
+```
+
+
+```{r}
+#summary(data)
+#Outliers in BMI , removed 
+#bmi_subset<-subset(data,BMI>100)
+#head(bmi_subset,10)
+data<-data%>%filter(BMI<100)
+summary(data)
+
+uncontrolled<-data%>%subset(BMI>27)
+```
+
+
+```{r Table1}
+library(tableone)
+dput(names(data))
+
+myvars<-c( "Age_at_Exam", "Sex", "sBP", "TG",
+"BMI","LDL","HDL", "A1c", "FBS", "Total_Cholesterol", "Diabetes","OA", 
+"comorbidities")
+tab <- CreateTableOne(vars = myvars, data = data, factorVars =c("OA","Diabetes"))
+tab
+
+
+tab$CatTable
+
+
+#tab.m<-as.matrix(tab)
+#tab.df<-as.data.frame(tab.m)
+#tabMat <- print(tab.df, exact = "stage", quote = FALSE, noSpaces = TRUE, printToggle = FALSE)
+## Save to a CSV file
+#write.csv(tab, file = "Table1.csv")
+summary(tab)
+```
+```{r}
+
+tab2<- CreateTableOne(vars=myvars,data=data,
+                      strata = "Diabetes", addOverall=T)
+
+tab2
+```
+```{r}
+chisq<-data%>%select(c('OA',"Diabetes"))
+options(scipen = 999)
+chisq$OA<-as.factor(chisq$OA)
+chisq$Diabetes<-as.factor(chisq$Diabetes)
+print(chisq.test(chisq))
+
+
+
+data %>%
+    count(Diabetes, OA) %>%
+    group_by(Diabetes) %>%
+    mutate(relfreq = n / sum(n)) 
+
+```
+## Model Summary
+```{r}
+
+mod.1<-data%>%glm(formula=as.factor(Diabetes)~FBS+sBP+TG+BMI+LDL+HDL+Age_at_Exam+as.factor(Sex)+comorbidities+as.factor(OA),family=binomial)
+summary(mod.1)
+
+mod.2<-uncontrolled%>%glm(formula=as.factor(Diabetes)~FBS+sBP+TG+BMI+LDL+HDL+Age_at_Exam+as.factor(Sex)+comorbidities+as.factor(OA),family=binomial)
+summary(mod.2)
+
+
+#mod.2<-data%>%subset(%>%glm(formula=as.factor(OA)~FBS+sBP+TG+BMI+LDL+HDL+Age_at_Exam+as.factor(Sex)+comorbidities+as.factor(Diabetes),family=binomial)
+#summary(mod.2)
+```
+```{r}
+#write.csv(data,'diabetes-jamovi.csv')
+invlogit<-function(x)
+{
+  1/(1+exp(-x))
+}
+invlogit(mod.1$coefficients)
+  
+```
+
+## Correlation
+```{r Correlation}
+
+#correlation
+data_num<-data%>%select(Age_at_Exam,sBP,BMI,LDL,HDL,TG,FBS,Diabetes,comorbidities,OA)
+cor(data_num)
+```
+
+## McFadden's R Squared 
+```{r McFadden}
+
+#McFadden’s R squared in R
+nullmod <- glm(data$Diabetes~1, family="binomial")
+1-logLik(mod.1)/logLik(nullmod)
+
+```
+
+## VIF 
+```{r VIF}
+library(car)
+vif(mod.1)
+```
+
+
+```{r pressure, echo=FALSE}
+library("Hmisc")
+mydata.rcorr = rcorr(as.matrix(data_num))
+mydata.rcorr
+
+#install.packages("corrplot")
+#library(corrplot)
+	
+#corrplot(as.matrix(corrplot()))
+```
+```{r}
+library(stargazer)
+stargazer(mod.1,type="text",title="Regression Results")
+
+m1.or=exp(coef(mod.1))
+library(stargazer)
+stargazer(mod.1,type='text', coef=list(m1.or), p.auto=FALSE)
+
+
+```
+
+```{r}
+chitest<-xtabs(~data$Diabetes+data$OA); print(xtable(chitest,digits=0))
+chisq.test(chitest)
+
+
+```
